@@ -9,7 +9,6 @@
 #include "strings.h"
 #include "bg.h"
 #include "field_effect.h"
-#include "party_menu.h"
 #include "task.h"
 #include "overworld.h"
 #include "link.h"
@@ -27,11 +26,13 @@
 #include "option_menu.h"
 #include "event_scripts.h"
 #include "save.h"
+// Añadido el 23/1/2019
+#include "rtc.h"
+//
 #include "gpu_regs.h"
 #include "scanline_effect.h"
 #include "text_window.h"
 #include "load_save.h"
-#include "trainer_card.h"
 #include "international_string_util.h"
 #include "constants/songs.h"
 #include "field_player_avatar.h"
@@ -91,9 +92,11 @@ extern void var_800D_set_xB(void);
 extern void sub_808B864(void);
 extern void CB2_Pokedex(void);
 extern void PlayRainSoundEffect(void);
+extern void CB2_PartyMenuFromStartMenu(void);
 extern void CB2_PokeNav(void);
-extern void ShowPlayerTrainerCard(void (*)(void));
+extern void sub_80C4DDC(void (*)(void));
 extern void sub_80C51C4(void (*)(void));
+extern void TrainerCard_ShowLinkCard(u8, void (*)(void));
 extern void ScriptUnfreezeEventObjects(void);
 extern void sub_81A9EC8(void);
 extern void save_serialize_map(void);
@@ -148,6 +151,9 @@ static void sub_80A08A4(u8 taskId);
 // Some other callback
 static bool8 sub_809FA00(void);
 
+//Añadido el 23/1/2019
+static const struct WindowTemplate sStartMenuWindowTemplate = {0, 1, 1, 4, 2, 0xF, 8}; // Parámetros de la ventana extra
+//
 static const struct WindowTemplate sSafariBallsWindowTemplate = {0, 1, 1, 9, 4, 0xF, 8};
 
 static const u8* const sPyramindFloorNames[] =
@@ -213,6 +219,9 @@ static void BuildUnionRoomStartMenu(void);
 static void BuildBattlePikeStartMenu(void);
 static void BuildBattlePyramidStartMenu(void);
 static void BuildMultiBattleRoomStartMenu(void);
+//Añadido el 23/1/2019
+static void ShowStartMenuExtraWindow(void);
+//
 static void ShowSafariBallsWindow(void);
 static void ShowPyramidFloorWindow(void);
 static void RemoveExtraStartMenuWindows(void);
@@ -304,6 +313,7 @@ static void BuildNormalStartMenu(void)
     AddStartMenuAction(MENU_ACTION_SAVE);
     AddStartMenuAction(MENU_ACTION_OPTION);
     AddStartMenuAction(MENU_ACTION_EXIT);
+	ShowStartMenuExtraWindow(); // Añadido el 23/1/2019 - Muestra la ventana auxiliar
 }
 
 static void BuildSafariZoneStartMenu(void)
@@ -375,6 +385,17 @@ static void BuildMultiBattleRoomStartMenu(void)
     AddStartMenuAction(MENU_ACTION_EXIT);
 }
 
+// Añadido el 23/1/2019
+static void ShowStartMenuExtraWindow(void) // Función que carga una ventana auxiliar en el menú de pausa.
+{	
+    sSafariBallsWindowId = AddWindow(&sStartMenuWindowTemplate);
+    PutWindowTilemap(sSafariBallsWindowId);
+    NewMenuHelpers_DrawStdWindowFrame(sSafariBallsWindowId, FALSE);
+	FormatDecimalTimeWOSeconds(gStringVar4, Rtc_GetCurrentHour(), Rtc_GetCurrentMinute());                                     
+    AddTextPrinterParameterized(sSafariBallsWindowId, 1, gStringVar4, 0, 1, 0xFF, NULL); 
+    CopyWindowToVram(sSafariBallsWindowId, 2);
+}
+
 static void ShowSafariBallsWindow(void)
 {
     sSafariBallsWindowId = AddWindow(&sSafariBallsWindowTemplate);
@@ -401,19 +422,23 @@ static void ShowPyramidFloorWindow(void)
     CopyWindowToVram(sBattlePyramidFloorWindowId, 2);
 }
 
-static void RemoveExtraStartMenuWindows(void)
+static void RemoveExtraStartMenuWindows(void) //Modificado el 23/1/2019
 {
     if (GetSafariZoneFlag())
     {
         sub_8198070(sSafariBallsWindowId, FALSE);
         CopyWindowToVram(sSafariBallsWindowId, 2);
         RemoveWindow(sSafariBallsWindowId);
-    }
-    if (InBattlePyramid())
+    }else if (InBattlePyramid()) //Antes eran dos if separados
     {
         sub_8198070(sBattlePyramidFloorWindowId, FALSE);
         RemoveWindow(sBattlePyramidFloorWindowId);
     }
+	else{ //Borra de la pantalla la venta auxiliar de la hora
+        sub_8198070(sSafariBallsWindowId, FALSE);
+        RemoveWindow(sSafariBallsWindowId);	
+		
+	}
 }
 
 static bool32 PrintStartMenuActions(s8 *pIndex, u32 count)
@@ -422,19 +447,16 @@ static bool32 PrintStartMenuActions(s8 *pIndex, u32 count)
 
     do
     {
-        if (sStartMenuItems[sCurrentStartMenuActions[index]].func.u8_void == StartMenuPlayerNameCallback)
-        {
+        if (sStartMenuItems[sCurrentStartMenuActions[index]].func.u8_void == StartMenuPlayerNameCallback) {
             PrintPlayerNameOnWindow(GetStartMenuWindowId(), sStartMenuItems[sCurrentStartMenuActions[index]].text, 8, (index << 4) + 9);
         }
-        else
-        {
+        else {
             StringExpandPlaceholders(gStringVar4, sStartMenuItems[sCurrentStartMenuActions[index]].text);
             AddTextPrinterParameterized(GetStartMenuWindowId(), 1, gStringVar4, 8, (index << 4) + 9, 0xFF, NULL);
         }
 
         index++;
-        if (index >= sNumStartMenuActions)
-        {
+        if (index >= sNumStartMenuActions) {
             *pIndex = index;
             return TRUE;
         }
@@ -468,14 +490,21 @@ static bool32 InitStartMenuStep(void)
         break;
     case 3:
         if (GetSafariZoneFlag())
+        {
             ShowSafariBallsWindow();
+        }
         if (InBattlePyramid())
+        {
             ShowPyramidFloorWindow();
+        }
         sUnknown_02037619[0]++;
         break;
     case 4:
-        if (PrintStartMenuActions(&sUnknown_02037619[1], 2))
-            sUnknown_02037619[0]++;
+        if (!PrintStartMenuActions(&sUnknown_02037619[1], 2))
+        {
+            break;
+        }
+        sUnknown_02037619[0]++;
         break;
     case 5:
         sStartMenuCursorPos = sub_81983AC(GetStartMenuWindowId(), 1, 0, 9, 16, sNumStartMenuActions, sStartMenuCursorPos);
@@ -490,14 +519,15 @@ static void InitStartMenu(void)
 {
     sUnknown_02037619[0] = 0;
     sUnknown_02037619[1] = 0;
-    while (!InitStartMenuStep())
-        ;
+    while (!InitStartMenuStep());
 }
 
 static void StartMenuTask(u8 taskId)
 {
     if (InitStartMenuStep() == TRUE)
+    {
         SwitchTaskToFollowupFunc(taskId);
+    }
 }
 
 static void CreateStartMenuTask(TaskFunc followupFunc)
@@ -536,14 +566,18 @@ void sub_809FA34(u8 taskId) // Referenced in field_screen.s and rom_8011DC0.s
     {
     case 0:
         if (InUnionRoom() == TRUE)
+        {
             var_800D_set_xB();
+        }
 
         gMenuCallback = HandleStartMenuInput;
         task->data[0]++;
         break;
     case 1:
         if (gMenuCallback() == TRUE)
+        {
             DestroyTask(taskId);
+        }
         break;
     }
 }
@@ -579,8 +613,9 @@ static bool8 HandleStartMenuInput(void)
         PlaySE(SE_SELECT);
         if (sStartMenuItems[sCurrentStartMenuActions[sStartMenuCursorPos]].func.u8_void == StartMenuPokedexCallback)
         {
-            if (GetNationalPokedexCount(0) == 0)
+            if (GetNationalPokedexCount(0) == 0) {
                 return FALSE;
+            }
         }
 
         gMenuCallback = sStartMenuItems[sCurrentStartMenuActions[sStartMenuCursorPos]].func.u8_void;
@@ -676,11 +711,17 @@ static bool8 StartMenuPlayerNameCallback(void)
         CleanupOverworldWindowsAndTilemaps();
 
         if (is_c1_link_related_active() || InUnionRoom())
-            ShowPlayerTrainerCard(CB2_ReturnToFieldWithOpenMenu); // Display trainer card
+        {
+            sub_80C4DDC(CB2_ReturnToFieldWithOpenMenu); // Display trainer card
+        }
         else if (FlagGet(FLAG_SYS_FRONTIER_PASS))
+        {
             sub_80C51C4(CB2_ReturnToFieldWithOpenMenu); // Display frontier pass
+        }
         else
-            ShowPlayerTrainerCard(CB2_ReturnToFieldWithOpenMenu); // Display trainer card
+        {
+            sub_80C4DDC(CB2_ReturnToFieldWithOpenMenu); // Display trainer card
+        }
 
         return TRUE;
     }
@@ -691,7 +732,9 @@ static bool8 StartMenuPlayerNameCallback(void)
 static bool8 StartMenuSaveCallback(void)
 {
     if (InBattlePyramid())
+    {
         RemoveExtraStartMenuWindows();
+    }
 
     gMenuCallback = SaveStartCallback; // Display save menu
 
@@ -737,7 +780,7 @@ static bool8 StartMenuLinkModePlayerNameCallback(void)
     {
         PlayRainSoundEffect();
         CleanupOverworldWindowsAndTilemaps();
-        ShowTrainerCardInLink(gUnknown_03005DB4, CB2_ReturnToFieldWithOpenMenu);
+        TrainerCard_ShowLinkCard(gUnknown_03005DB4, CB2_ReturnToFieldWithOpenMenu);
 
         return TRUE;
     }

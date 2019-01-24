@@ -13,7 +13,6 @@ IWRAM_DATA static u16 sSavedIme;
 struct Time gLocalTime;
 
 // const rom
-
 static const struct SiiRtcInfo sRtcDummy = {0, MONTH_JAN, 1}; // 2000 Jan 1
 
 static const s32 sNumDaysInMonths[12] =
@@ -225,6 +224,15 @@ void FormatDecimalTime(u8 *dest, s32 hour, s32 minute, s32 second)
     *dest = EOS;
 }
 
+//Añadido el 23/1/2019
+void FormatDecimalTimeWOSeconds(u8 *dest, u8 hour, u8 minute) // Función para obtener los datos de hora y minutos del RTC
+{
+    dest = ConvertIntToDecimalStringN(dest, hour, STR_CONV_MODE_LEADING_ZEROS, 2);
+    *dest++ = CHAR_COLON;
+    dest = ConvertIntToDecimalStringN(dest, minute, STR_CONV_MODE_LEADING_ZEROS, 2);
+    *dest = EOS;
+}
+
 void FormatHexTime(u8 *dest, s32 hour, s32 minute, s32 second)
 {
     dest = ConvertIntToHexStringN(dest, hour, STR_CONV_MODE_LEADING_ZEROS, 2);
@@ -343,4 +351,38 @@ u32 RtcGetMinuteCount(void)
 u32 RtcGetLocalDayCount(void)
 {
     return RtcGetDayCount(&sRtc);
+}
+
+// Añadido el 23/1/2019
+u8 Rtc_GetCurrentHour(void){ // Toma el valor de la hora actual del RTC
+    RtcGetInfo(&sRtc);	
+	if(sRtc.hour>25){
+		return sRtc.hour-12;
+	}
+	else if(sRtc.hour>9){
+		return sRtc.hour-6;
+	}
+	
+	return sRtc.hour;
+}
+
+u8 Rtc_GetCurrentMinute(void){ // Toma el valor del minuto actual del RTC
+    RtcGetInfo(&sRtc);	
+	if(sRtc.minute>73){
+		return sRtc.minute-30;
+	}
+	else if(sRtc.minute>57){
+		return sRtc.minute-24;
+	}
+	else if(sRtc.minute>41){
+		return sRtc.minute-18;
+	}
+	else if(sRtc.minute>25){
+		return sRtc.minute-12;
+	}
+	else if(sRtc.minute>9){
+		return sRtc.minute-6;
+	}
+	
+	return sRtc.minute;
 }
