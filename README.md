@@ -1,7 +1,5 @@
 # Pokémon Emerald
 
-[![Build Status][travis-badge]][travis]
-
 This is a disassembly of Pokémon Emerald.
 
 It builds the following rom:
